@@ -1,0 +1,6 @@
+__pycache__
+.venv
+.DS_Store
+dataset
+*.pth
+config/base_weights
