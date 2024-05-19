@@ -4,9 +4,9 @@ A YOLOv3 based neural network to detect heads of people on security cameras 🙆
 
 ## Examples
 
-<img alt="head detection good example" src="./examples/good_1.jpg" width="300" hspace="5"/>
-<img alt="head detection good example" src="./examples/good_2.jpg" width="300" hspace="5"/>
-<img alt="head detection good example" src="./examples/good_3.jpg" width="300" hspace="5"/>
+<img alt="head detection good example" src="./examples/good_1.jpg" width="350" hspace="5"/>
+<img alt="head detection good example" src="./examples/good_2.jpg" width="350" hspace="5"/>
+<img alt="head detection good example" src="./examples/good_3.jpg" width="350" hspace="5"/>
 
 ## Average precision
 
@@ -28,9 +28,9 @@ Download the weights — [Google Drive](https://drive.google.com/file/d/1xnfrCR4
 
 The model doesn't perform well if there are many objects on the image.
 
-<img alt="head detection good example" src="./examples/bad_1.jpg" width="300" hspace="5"/>
-<img alt="head detection good example" src="./examples/bad_2.jpg" width="300" hspace="5"/>
-<img alt="head detection good example" src="./examples/bad_3.jpg" width="300" hspace="5"/>
+<img alt="head detection bad example" src="./examples/bad_1.jpg" width="350" hspace="5"/>
+<img alt="head detection bad example" src="./examples/bad_2.jpg" width="350" hspace="5"/>
+<img alt="head detection bad example" src="./examples/bad_3.jpg" width="350" hspace="5"/>
 
 ## Setup
 
