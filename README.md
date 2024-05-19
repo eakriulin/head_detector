@@ -34,21 +34,21 @@ The model doesn't perform well if there are many objects on the image.
 
 ## Setup
 
-Download and enter the project:
+Download and enter the project.
 
 ```zsh
 git clone https://github.com/eakriulin/head_detector.git
 cd head_detector
 ```
 
-Create and activate the virtual environment
+Create and activate the virtual environment.
 
 ```zsh
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Install dependencies
+Install dependencies.
 
 ```zsh
 pip3 install -r requirements.txt
