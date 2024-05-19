@@ -197,7 +197,7 @@ class YOLO():
         ap = torch.trapz(precision, recall)
         return ap
 
-    def non_max_suppression(self, outputs: list[torch.Tensor]):
+    def non_max_suppression(self, outputs: list[torch.Tensor]) -> torch.Tensor:
         anchors = torch.tensor(h.anchors).to(device=self.device)
 
         detections = [self.activate_and_scale(outputs[i], anchors[i], h.grid_sizes[i]) for i in range(len(outputs))]
@@ -230,9 +230,10 @@ class YOLO():
 
             output[image_idx] = image_detections if output[image_idx] is None else torch.concat((output[image_idx], image_detections))
 
-        return torch.stack(output)
+        output = [image_detections for image_detections in output if image_detections is not None]
+        return torch.stack(output) if len(output) > 0 else torch.tensor([]).to(device=self.device)
     
-    def iou(self, box: torch.Tensor, boxes: torch.Tensor):
+    def iou(self, box: torch.Tensor, boxes: torch.Tensor) -> torch.Tensor:
         x1, y1, d1 = box[..., 0], box[..., 1], box[..., 2]
         r1 = d1 / 2
 
@@ -263,10 +264,10 @@ class YOLO():
 
         return ious
 
-    def activate_and_scale(self, output: torch.Tensor, anchors: torch.Tensor, grid_size: int):
+    def activate_and_scale(self, output: torch.Tensor, anchors: torch.Tensor, grid_size: int) -> torch.Tensor:
         return self.scale(self.activate(output, anchors, grid_size), grid_size)
 
-    def activate(self, output: torch.Tensor, anchors: torch.Tensor, grid_size: int):
+    def activate(self, output: torch.Tensor, anchors: torch.Tensor, grid_size: int) -> torch.Tensor:
         anchors = anchors.repeat(1, grid_size * grid_size)
 
         output[..., 0] = torch.sigmoid(output[..., 0]) # note: activation of x
@@ -276,7 +277,7 @@ class YOLO():
 
         return output
 
-    def scale(self, output: torch.Tensor, grid_size: int):
+    def scale(self, output: torch.Tensor, grid_size: int) -> torch.Tensor:
         # note: applying offset for x and y
         grid = torch.arange(grid_size).float()
         grid_x, grid_y = torch.meshgrid(grid, grid, indexing='xy')
