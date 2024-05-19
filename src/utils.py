@@ -1,5 +1,4 @@
 import os
-import torch
 import numpy as np
 from sklearn.cluster import KMeans
 
@@ -50,27 +49,3 @@ def kmeans_anchors(diameters: np.ndarray, k: int) -> np.ndarray:
     anchor_sizes = kmeans.cluster_centers_
     anchor_sizes = sorted(anchor_sizes.flatten())
     return anchor_sizes
-
-def iou(box1: torch.Tensor, box2: torch.Tensor) -> torch.Tensor:
-    box1_x1 = box1[..., 0] - box1[..., 2] / 2
-    box1_y1 = box1[..., 1] - box1[..., 2] / 2
-    box1_x2 = box1[..., 0] + box1[..., 2] / 2
-    box1_y2 = box1[..., 1] + box1[..., 2] / 2
-
-    box2_x1 = box2[..., 0] - box2[..., 2] / 2
-    box2_y1 = box2[..., 1] - box2[..., 2] / 2
-    box2_x2 = box2[..., 0] + box2[..., 2] / 2
-    box2_y2 = box2[..., 1] + box2[..., 2] / 2
-
-    intersection_x1 = torch.max(box1_x1, box2_x1)
-    intersection_y1 = torch.max(box1_y1, box2_y1)
-    intersection_x2 = torch.min(box1_x2, box2_x2)
-    intersection_y2 = torch.min(box1_y2, box2_y2)
-
-    intersection_area = torch.clamp(intersection_x2 - intersection_x1, min=0) * torch.clamp(intersection_y2 - intersection_y1, min=0)
-
-    box1_area = (box1_x2 - box1_x1) * (box1_y2 - box1_y1)
-    box2_area = (box2_x2 - box2_x1) * (box2_y2 - box2_y1)
-
-    iou = intersection_area / (box1_area + box2_area - intersection_area)
-    return iou

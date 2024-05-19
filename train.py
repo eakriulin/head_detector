@@ -27,7 +27,7 @@ transform_fn = A.Compose([
 ], bbox_params=A.BboxParams(format='yolo'))
 
 train_set = torch.utils.data.DataLoader(dataset=Dataset(images_dir='./dataset/train/images', annotations_dir='./dataset/train/annotations', transform_fn=transform_fn, device=device), batch_size=h.batch_size, shuffle=True)
-valid_set = torch.utils.data.DataLoader(dataset=Dataset(images_dir='./dataset/valid/images', annotations_dir='./dataset/valid/annotations', transform_fn=transform_fn, device=device), batch_size=h.batch_size, shuffle=True)
+valid_set = torch.utils.data.DataLoader(dataset=Dataset(images_dir='./dataset/valid/images', annotations_dir='./dataset/valid/annotations', transform_fn=transform_fn, device=device), batch_size=h.batch_size)
 
 yolo = YOLO(config_filepath='./config/modules.cfg', device=device)
 yolo.load_base_weights(filepath='./config/base_weights')

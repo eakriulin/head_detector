@@ -5,7 +5,6 @@ import cv2
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import hyperparameters as h
-import src.utils as utils
 from src.dataset import Dataset
 from src.YOLO import YOLO
 import warnings
@@ -22,8 +21,7 @@ transform_fn = A.Compose([
     ToTensorV2(),
 ], bbox_params=A.BboxParams(format='yolo'))
 
-valid_set = torch.utils.data.DataLoader(dataset=Dataset(images_dir='./dataset/valid/images', annotations_dir='./dataset/valid/annotations', transform_fn=transform_fn, device=device), batch_size=h.batch_size, shuffle=True)
-test_set = torch.utils.data.DataLoader(dataset=Dataset(images_dir='./dataset/test/images', annotations_dir='./dataset/test/annotations', transform_fn=transform_fn, device=device), batch_size=h.batch_size, shuffle=True)
+test_set = torch.utils.data.DataLoader(dataset=Dataset(images_dir='./dataset/test/images', annotations_dir='./dataset/test/annotations', transform_fn=transform_fn, device=device), batch_size=h.batch_size)
 
 yolo = YOLO(config_filepath='./config/modules.cfg', device=device)
 yolo.load(yolo.best_valid_weights_filepath)

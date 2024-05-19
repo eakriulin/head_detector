@@ -64,26 +64,16 @@ class Dataset(torch.utils.data.Dataset):
             targets = [target.view(target.size(0) * target.size(0) * h.n_of_anchors, h.n_of_attributes_per_box) for target in targets]
 
         return image, targets
-    
-    def iou(self, square1: torch.Tensor, square2: torch.Tensor) -> torch.Tensor:
-        area1 = square1 ** 2
-        area2 = square2 ** 2
+
+    def iou(self, diameter1: torch.Tensor, diameter2: torch.Tensor) -> torch.Tensor:
+        r1 = diameter1 / 2.0
+        r2 = diameter2 / 2.0
+        
+        area1 = torch.pi * r1 ** 2
+        area2 = torch.pi * r2 ** 2
         
         area_intersection = torch.min(area1, area2)
         area_union = torch.max(area1, area2)
         
         iou = area_intersection / area_union
         return iou
-
-    # def iou(self, diameter1: torch.Tensor, diameter2: torch.Tensor) -> torch.Tensor:
-    #     r1 = diameter1 / 2.0
-    #     r2 = diameter2 / 2.0
-        
-    #     area1 = torch.pi * r1 ** 2
-    #     area2 = torch.pi * r2 ** 2
-        
-    #     area_intersection = torch.min(area1, area2)
-    #     area_union = torch.max(area1, area2)
-        
-    #     iou = area_intersection / area_union
-    #     return iou

@@ -1,11 +1,10 @@
 import os
 import torch
+import torch.nn.functional as F
 import torch.utils
 import torch.utils.data
 import numpy as np
 import hyperparameters as h
-from src.Loss import Loss
-from src.utils import iou
 from src.modules.Shortcut import Shortcut
 from src.modules.Route import Route
 from src.modules.Output import Output
@@ -22,8 +21,6 @@ class YOLO():
         self.blocks = self._read_config(config_filepath)
         self.neural_network = self._create_modules(self.blocks).to(device=self.device)
 
-        self.loss_fn = Loss()
-
     def save(self, filepath: str) -> None:
         torch.save(self.neural_network.state_dict(), filepath)
 
@@ -33,6 +30,8 @@ class YOLO():
     def train(self, train_set: torch.utils.data.DataLoader, valid_set: torch.utils.data.DataLoader) -> None:
         self.neural_network.train()
         optimizer = torch.optim.Adam(self.neural_network.parameters(), h.learning_rate)
+
+        anchors = torch.tensor(h.anchors).to(device=self.device)
 
         best_train_loss = float('inf')
         best_valid_ap = float('-inf')
@@ -44,11 +43,10 @@ class YOLO():
             for batch, targets in train_set:
                 optimizer.zero_grad()
 
-                targets = torch.concat(targets, dim=1)
                 outputs = self.forward(batch)
-                outputs = torch.concat(outputs, dim=1)
 
-                batch_loss = self.loss_fn.forward(outputs, targets)
+                batch_loss = [self.calculate_loss(outputs[i], targets[i], anchors[i], h.grid_sizes[i]) for i in range(len(outputs))]
+                batch_loss = torch.sum(torch.stack(batch_loss))
 
                 batch_loss.backward()
                 optimizer.step()
@@ -78,6 +76,8 @@ class YOLO():
             has_been_in_train_mode = self.neural_network.training
             self.neural_network.eval()
 
+            anchors = torch.tensor(h.anchors).to(device=self.device)
+
             all_targets: torch.Tensor | None = None
             all_outputs: torch.Tensor | None = None
 
@@ -87,7 +87,7 @@ class YOLO():
 
                 outputs = self.forward(batch)
 
-                outputs = [self.activate_and_scale(outputs[i], h.grid_sizes[i]) for i in range(len(outputs))]
+                outputs = [self.activate_and_scale(outputs[i], anchors[i], h.grid_sizes[i]) for i in range(len(outputs))]
                 outputs = torch.concat(outputs, dim=1)
 
                 all_targets = targets if all_targets is None else torch.concat((all_targets, targets), dim=0)
@@ -127,6 +127,28 @@ class YOLO():
             layer_outputs.append(input)
 
         return yolo_outputs
+    
+    def calculate_loss(self, output: torch.Tensor, target: torch.Tensor, anchors: torch.Tensor, grid_size: int) -> torch.Tensor:
+        object_mask = target[..., 3] == 1
+        no_object_mask = target[..., 3] == 0
+
+        anchors = anchors.repeat(1, grid_size * grid_size)
+
+        output_coordinates = torch.sigmoid(output[..., :2])
+        output_box = torch.exp(output[..., 2]) * anchors
+        output_object = output[..., 3]
+
+        target_coordinates = target[..., :2]
+        target_box = target[..., 2]
+        target_object = target[..., 3]
+
+        no_object_loss = F.binary_cross_entropy_with_logits(output_object[no_object_mask], target_object[no_object_mask], reduction='sum')
+        object_loss = F.binary_cross_entropy_with_logits(output_object[object_mask], target_object[object_mask], reduction='sum')
+        coordinates_loss = F.mse_loss(output_coordinates[object_mask], target_coordinates[object_mask], reduction='sum')
+        box_loss = F.mse_loss(output_box[object_mask], target_box[object_mask], reduction='sum')
+
+        loss = no_object_loss + object_loss + coordinates_loss + box_loss
+        return loss / output.size(0)
         
     def calculate_average_precision(self, outputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         # note: lists of True/False Positives
@@ -144,7 +166,7 @@ class YOLO():
                 if detection[..., 3] < h.confidence_threshold:
                     continue
 
-                ious = iou(detection.unsqueeze(0), target).squeeze()
+                ious = self.iou(detection.unsqueeze(0), target).squeeze()
                 sorted_iou_indices = torch.sort(ious, descending=True)[1]
 
                 max_iou = float('-inf')
@@ -176,7 +198,9 @@ class YOLO():
         return ap
 
     def non_max_suppression(self, outputs: list[torch.Tensor]):
-        detections = [self.activate_and_scale(outputs[i], h.grid_sizes[i]) for i in range(len(outputs))]
+        anchors = torch.tensor(h.anchors).to(device=self.device)
+
+        detections = [self.activate_and_scale(outputs[i], anchors[i], h.grid_sizes[i]) for i in range(len(outputs))]
         detections = torch.concat(detections, dim=1)
 
         confidence_mask = (detections[..., 3] >= h.confidence_threshold).float().unsqueeze(2)
@@ -196,7 +220,7 @@ class YOLO():
 
             box_idx = 0
             while box_idx < image_detections.size(0):
-                ious = iou(image_detections[box_idx].unsqueeze(0), image_detections[box_idx + 1:])
+                ious = self.iou(image_detections[box_idx].unsqueeze(0), image_detections[box_idx + 1:])
                 iou_mask = (ious < h.iou_threshold).float().unsqueeze(1)
                 image_detections[box_idx + 1:] *= iou_mask
 
@@ -208,44 +232,46 @@ class YOLO():
 
         return torch.stack(output)
     
-    # def iou(self, box: torch.Tensor, boxes: torch.Tensor):
-    #     x1, y1, d1 = box[..., 0], box[..., 1], box[..., 2]
-    #     r1 = d1 / 2
+    def iou(self, box: torch.Tensor, boxes: torch.Tensor):
+        x1, y1, d1 = box[..., 0], box[..., 1], box[..., 2]
+        r1 = d1 / 2
 
-    #     x2, y2, d2 = boxes[..., 0], boxes[..., 1], boxes[..., 2]
-    #     r2 = d2 / 2
+        x2, y2, d2 = boxes[..., 0], boxes[..., 1], boxes[..., 2]
+        r2 = d2 / 2
 
-    #     dist = torch.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        dist = torch.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
-    #     area1 = torch.pi * r1 ** 2
-    #     area2 = torch.pi * r2 ** 2
+        area1 = torch.pi * r1 ** 2
+        area2 = torch.pi * r2 ** 2
 
-    #     no_overlap = dist >= (r1 + r2)
-    #     completely_within = dist <= torch.abs(r1 - r2)
+        no_overlap = dist >= (r1 + r2)
+        completely_within = dist <= torch.abs(r1 - r2)
 
-    #     term1 = r1 ** 2 * torch.acos((dist**2 + r1 ** 2 - r2 ** 2) / (2 * dist * r1)).clamp(min=0)
-    #     term2 = r2 ** 2 * torch.acos((dist**2 + r2 ** 2 - r1 ** 2) / (2 * dist * r2)).clamp(min=0)
-    #     term3 = 0.5 * torch.sqrt((-dist + r1 + r2).clamp(min=0) * (dist + r1 - r2).clamp(min=0) * (dist - r1 + r2).clamp(min=0) * (dist + r1 + r2).clamp(min=0))
-    #     area_of_intersection = term1 + term2 - term3
+        term1 = r1 ** 2 * torch.acos((dist**2 + r1 ** 2 - r2 ** 2) / (2 * dist * r1)).clamp(min=0)
+        term2 = r2 ** 2 * torch.acos((dist**2 + r2 ** 2 - r1 ** 2) / (2 * dist * r2)).clamp(min=0)
+        term3 = 0.5 * torch.sqrt((-dist + r1 + r2).clamp(min=0) * (dist + r1 - r2).clamp(min=0) * (dist - r1 + r2).clamp(min=0) * (dist + r1 + r2).clamp(min=0))
+        area_of_intersection = term1 + term2 - term3
 
-    #     area_of_intersection[no_overlap] = 0.0
-    #     if completely_within.any():
-    #         area_of_intersection[completely_within] = torch.pi * torch.min(r1, r2[completely_within]) ** 2
+        area_of_intersection[no_overlap] = 0.0
+        if completely_within.any():
+            area_of_intersection[completely_within] = torch.pi * torch.min(r1, r2[completely_within]) ** 2
 
-    #     union_area = area1 + area2 - area_of_intersection
+        union_area = area1 + area2 - area_of_intersection
 
-    #     ious = area_of_intersection / union_area
-    #     ious[no_overlap] = 0.0
+        ious = area_of_intersection / union_area
+        ious[no_overlap] = 0.0
 
-    #     return ious
+        return ious
 
-    def activate_and_scale(self, output: torch.Tensor, grid_size: int):
-        return self.scale(self.activate(output), grid_size)
+    def activate_and_scale(self, output: torch.Tensor, anchors: torch.Tensor, grid_size: int):
+        return self.scale(self.activate(output, anchors, grid_size), grid_size)
 
-    def activate(self, output: torch.Tensor):
+    def activate(self, output: torch.Tensor, anchors: torch.Tensor, grid_size: int):
+        anchors = anchors.repeat(1, grid_size * grid_size)
+
         output[..., 0] = torch.sigmoid(output[..., 0]) # note: activation of x
         output[..., 1] = torch.sigmoid(output[..., 1]) # note: activation of y
-        output[..., 2] = torch.sigmoid(output[..., 2]) # note: activation of d
+        output[..., 2] = torch.exp(output[..., 2]) * anchors # note: activation of d
         output[..., 3] = torch.sigmoid(output[..., 3]) # note: activation of object confidence
 
         return output
@@ -434,9 +460,9 @@ class YOLO():
         channels.append(out_channels)
 
     def _add_output_module(self, _: dict, modules: torch.nn.ModuleList, channels: list[int]) -> None:
-        head = Output()
+        output = Output()
 
-        modules.append(head)
+        modules.append(output)
         channels.append(-1)
 
     def _add_upsample_module(self, block: dict, modules: torch.nn.ModuleList, channels: list[int]) -> None:
